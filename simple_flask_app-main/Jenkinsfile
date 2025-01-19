@@ -18,11 +18,14 @@ pipeline {
         stage('Set Up Python Environment') {
             steps {
                 script {
+                    // Create a virtual environment and upgrade pip
                     bat 'python -m venv venv'
                     bat 'venv\\Scripts\\activate.bat && python -m pip install --upgrade pip'
+                    
+                    // Install dependencies from requirements.txt inside the nested folder
                     bat '''
                         venv\\Scripts\\activate.bat && (
-                            pip install -r requirements.txt --verbose
+                            pip install -r simple_flask_app-main/requirements.txt --verbose
                         )
                     '''
                 }
@@ -32,7 +35,8 @@ pipeline {
         stage('Run Tests') {
             steps {
                 script {
-                    bat 'venv\\Scripts\\activate.bat && python -m pytest'
+                    // Run pytest inside the nested folder
+                    bat 'venv\\Scripts\\activate.bat && cd simple_flask_app-main && python -m pytest'
                 }
             }
         }
@@ -40,19 +44,19 @@ pipeline {
         stage('Deploy Application') {
             steps {
                 script {
-                    // Create a Windows batch script to run the server
+                    // Create a Windows batch script to run the Flask server
                     bat '''
                         echo @echo off > start_server.bat
-                        echo set FLASK_APP=app.py >> start_server.bat
+                        echo set FLASK_APP=simple_flask_app-main/app.py >> start_server.bat
                         echo set FLASK_ENV=production >> start_server.bat
                         echo call venv\\Scripts\\activate.bat >> start_server.bat
                         echo python -m flask run --host=127.0.0.1 --port=%PORT% >> start_server.bat
                     '''
                     
-                    // Run the server in background
+                    // Start the server in the background
                     bat 'start /B start_server.bat'
                     
-                    // Wait for server to start using PowerShell
+                    // Wait for the server to start
                     bat '''
                         powershell -Command "Start-Sleep -Seconds 15"
                     '''
@@ -63,7 +67,7 @@ pipeline {
         stage('Verify Deployment') {
             steps {
                 script {
-                    // Using PowerShell for better HTTP request handling
+                    // Verify that the application is running
                     bat '''
                         powershell -Command "try { \
                             \$response = Invoke-WebRequest -Uri http://127.0.0.1:%PORT% -UseBasicParsing; \
@@ -86,6 +90,7 @@ pipeline {
         stage('Health Check') {
             steps {
                 script {
+                    // Perform a health check
                     bat '''
                         powershell -Command "try { \
                             \$response = Invoke-WebRequest -Uri http://127.0.0.1:%PORT%/health -UseBasicParsing; \
@@ -110,7 +115,7 @@ pipeline {
     post {
         always {
             script {
-                // Clean up processes
+                // Clean up running processes
                 bat '''
                     powershell -Command "try { \
                         Get-Process -Name python -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; \
@@ -124,6 +129,7 @@ pipeline {
         }
         failure {
             script {
+                // Log installed packages on failure
                 echo 'Pipeline failed! Checking virtual environment status...'
                 bat '''
                     echo Listing installed packages:
